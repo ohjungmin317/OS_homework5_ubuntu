@@ -33,6 +33,7 @@ void            fileinit(void);
 int             fileread(struct file*, char*, int n);
 int             filestat(struct file*, struct stat*);
 int             filewrite(struct file*, char*, int n);
+void            cs_printinfo(struct file *n, char *fname); // /*T_CS file system for 20180775*/ | for use printinfo system call  
 
 // fs.c
 void            readsb(int dev, struct superblock *sb);

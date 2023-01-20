@@ -42,6 +42,11 @@ ls(char *path)
   }
 
   switch(st.type){
+  /*T_CS file system for 20180775*/  
+  case T_CS:
+   printf(1, "%s %d %d %d\n", fmtname(path), st.type, st.ino, st.size); // when you command ls system call for print list add T_CS file (test_norm / test_cs)
+   break;
+
   case T_FILE:
     printf(1, "%s %d %d %d\n", fmtname(path), st.type, st.ino, st.size);
     break;

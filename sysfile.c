@@ -253,6 +253,11 @@ create(char *path, short type, short major, short minor)
     ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
+
+    /*T_CS file system for 20180775*/
+    if(type == T_CS && ip->type == T_CS) // when T_CS file create 
+      return ip;
+    
     iunlockput(ip);
     return 0;
   }
@@ -295,19 +300,36 @@ sys_open(void)
 
   begin_op();
 
-  if(omode & O_CREATE){
-    ip = create(path, T_FILE, 0, 0);
-    if(ip == 0){
+  /*T_CS file system for 20180775*/
+  if ((omode & O_CREATE) && (omode & O_CS)) // when file open system call base for CS file create flag -> O_CS
+  {
+    ip = create(path, T_CS, 0, 0);
+    if (ip == 0)
+    {
       end_op();
       return -1;
     }
-  } else {
-    if((ip = namei(path)) == 0){
+  }
+
+  else if (omode & O_CREATE)
+  {
+    ip = create(path, T_FILE, 0, 0);
+    if (ip == 0)
+    {
+      end_op();
+      return -1;
+    }
+  }
+  else
+  {
+    if ((ip = namei(path)) == 0)
+    {
       end_op();
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if (ip->type == T_DIR && omode != O_RDONLY)
+    {
       iunlockput(ip);
       end_op();
       return -1;
@@ -329,6 +351,7 @@ sys_open(void)
   f->off = 0;
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+  // f->csable = (omode & O_CS);
   return fd;
 }
 
@@ -441,4 +464,23 @@ sys_pipe(void)
   fd[0] = fd0;
   fd[1] = fd1;
   return 0;
+}
+
+/*T_CS file system for 20180775*/
+int sys_printinfo(void)
+{
+  int fd;
+  char *fname;
+  struct file *n;
+
+  if (argint(0, &fd) < 0 || argstr(1, &fname) < 0) // argument (int) error
+  {
+    return -1;
+  }
+  if (argfd(0, &fd, &n) < 0) // argument (file) error
+  {
+    return -1;
+  }
+  cs_printinfo(n, fname); // file.c -> cs_printinfo for use system call 
+  return 1;
 }

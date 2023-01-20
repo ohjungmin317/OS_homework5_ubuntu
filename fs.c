@@ -21,6 +21,13 @@
 #include "buf.h"
 #include "file.h"
 
+// /*T_CS file system for 20180775*/
+#define BIT 255 
+
+/* flag for true and false bool operation */
+#define TRUE 1
+#define FALSE 0
+
 #define min(a, b) ((a) < (b) ? (a) : (b))
 static void itrunc(struct inode*);
 // there should be one superblock per disk device, but we run with
@@ -74,7 +81,10 @@ balloc(uint dev)
     }
     brelse(bp);
   }
-  panic("balloc: out of blocks");
+  // panic("balloc: out of blocks");
+  /*T_CS file system for 20180775*/
+  // cprintf("ERROR: data block overflow\n");
+  return 0;
 }
 
 // Free a disk block.
@@ -399,37 +409,125 @@ bmap(struct inode *ip, uint bn)
   panic("bmap: out of range");
 }
 
+/*T_CS file system for 20180775*/
+static uint
+csbmap(struct inode *ip, uint bn)
+{
+  uint addr = 0, address_bn = 0;
+  uint a, b, backward_addr;
+  int blc_cnt = bn, blc_num = bn; // count for the block number 
+
+  for (a = 0; a < NDIRECT; a++) // DIRECT range = 12 for loop Direct range
+  {
+    if ((b = ip->addrs[a]) != 0)
+    {
+      address_bn = address_bn + (b & BIT); // allocated forward bit + backward bit (num, length)
+    }
+  }
+
+  if (address_bn > bn) // When you not allocate new addrs
+  {
+    for (a = 0; a < NDIRECT; a++) // DIRECT range = 12 for loop Direct range
+    {
+      if ((b = ip->addrs[a]) != 0)
+      {
+        blc_cnt = blc_cnt - (b & BIT); // cal when locate block number 
+        if (blc_cnt <= 0) // when bn count 0 or - number 
+        {
+          return addr = (b >> 8) + blc_num; // add for the length + number
+        }
+        blc_num = blc_cnt;
+      }
+    }
+  }
+  else // When you allocate new addrs
+  {
+    addr = balloc(ip->dev);
+    if (addr == 0) // when error -> allocate data block overflow
+    {
+      return 0;
+    }
+    for (a = 0; a < NDIRECT; a++)
+    {
+      if ((b = ip->addrs[a]) != 0 && ((b & BIT) < BIT))
+      {
+        backward_addr = (b >> 8) + (b & BIT); // backward_addrs (for length) -> operation for num + length (num + length) -> ex) (600,5) -> 605 block
+
+        if (backward_addr == addr) // when (num , lenght) == addr
+        {
+          ip->addrs[a] = ip->addrs[a] + 1; // allocate for (num,length)
+          return addr;
+        }
+      }
+    }
+    for (a = 0; a < NDIRECT; a++)
+    {
+      if ((b = ip->addrs[a]) == 0)
+      {
+        ip->addrs[a] = (addr << 8) + 1; // allocate file (num, length)
+        return addr;
+      }
+    }
+  }
+  return 0;
+
+  /* T_CS do not think of NDIRECT */
+}
+
 // Truncate inode (discard contents).
 // Only called when the inode has no links
 // to it (no directory entries referring to it)
 // and has no in-memory reference to it (is
 // not an open file or current directory).
 static void
-itrunc(struct inode *ip)
+itrunc(struct inode *ip) // for CS file delete mechanism 
 {
-  int i, j;
+  int i, j, k;
   struct buf *bp;
   uint *a;
 
-  for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
-      ip->addrs[i] = 0;
+  /*T_CS file system for 20180775*/
+  if (ip->type == T_CS) // When type for T_CS file
+  {
+    for (i = 0; i < NDIRECT; i++)
+    {
+      if (ip->addrs[i]) // if mapping for addrs[i]
+      {
+        int b = ip->addrs[i] & BIT; // allocate length for find
+        for (k = 0; k < b; k++)
+        {
+          bfree(ip->dev, (ip->addrs[i] >> 8) + k); // free for allocate addrs for delete mechanism
+        }
+        ip->addrs[i] = 0;
+      }
     }
   }
-
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
-    a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
-        bfree(ip->dev, a[j]);
+  /*T_CS file system for 20180775*/
+  else // not type for T_CS ex) DEV / FILE / DIR
+  {
+    for (i = 0; i < NDIRECT; i++)
+    {
+      if (ip->addrs[i])
+      {
+        bfree(ip->dev, ip->addrs[i]);
+        ip->addrs[i] = 0;
+      }
     }
-    brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
-  }
 
+    if (ip->addrs[NDIRECT])
+    {
+      bp = bread(ip->dev, ip->addrs[NDIRECT]);
+      a = (uint *)bp->data;
+      for (j = 0; j < NINDIRECT; j++)
+      {
+        if (a[j])
+          bfree(ip->dev, a[j]);
+      }
+      brelse(bp);
+      bfree(ip->dev, ip->addrs[NDIRECT]);
+      ip->addrs[NDIRECT] = 0;
+    }
+  }
   ip->size = 0;
   iupdate(ip);
 }
@@ -467,7 +565,18 @@ readi(struct inode *ip, char *dst, uint off, uint n)
     n = ip->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE));
+
+    /*T_CS file system for 20180775*/ 
+    if (ip->type == T_CS) // When T_CS read for csbmap
+    {
+      bp = bread(ip->dev, csbmap(ip, off/BSIZE));
+    }
+
+    /*T_CS file system for 20180775*/ 
+    else // When DEV / FILE / DIR read for bmap
+    {
+      bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    }
     m = min(n - tot, BSIZE - off%BSIZE);
     memmove(dst, bp->data + off%BSIZE, m);
     brelse(bp);
@@ -483,20 +592,39 @@ writei(struct inode *ip, char *src, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
+  uint error_flag;
 
-  if(ip->type == T_DEV){
+  if(ip->type == T_DEV)
+  {
     if(ip->major < 0 || ip->major >= NDEV || !devsw[ip->major].write)
       return -1;
     return devsw[ip->major].write(ip, src, n);
   }
-
-  if(off > ip->size || off + n < off)
-    return -1;
+  /*T_CS file system for 20180775*/ 
+  if(ip->type==T_CS) // When T_CS write 
+  ; // nothing to do 
+  else // When DEV / DIR / FILE 
+  {
   if(off + n > MAXFILE*BSIZE)
     return -1;
+  }
 
-  for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE));
+  for(tot=0; tot<n; tot+=m, off+=m, src+=m)
+  {
+    error_flag = TRUE; // when error flag = true -> occur the error situation
+    if (ip->type == T_CS)
+    {
+      bp = bread(ip->dev, (error_flag = csbmap(ip, off/BSIZE))); // read for csbmap 
+      
+      if (!error_flag)
+      {
+        return -2; // for print for error happen 
+      }
+    }
+    else
+    {
+      bp = bread(ip->dev, bmap(ip, off/BSIZE)); // read for file / dev / dir -> bmap
+    }     
     m = min(n - tot, BSIZE - off%BSIZE);
     memmove(bp->data + off%BSIZE, src, m);
     log_write(bp);

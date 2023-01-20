@@ -23,6 +23,7 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int printinfo(int fd, char *fname); // /*T_CS file system for 20180775*/ | printinfo systemcall
 
 // ulib.c
 int stat(const char*, struct stat*);

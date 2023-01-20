@@ -1,6 +1,7 @@
 #define T_DIR  1   // Directory
 #define T_FILE 2   // File
 #define T_DEV  3   // Device
+#define T_CS   4  // Continuous Sector based File | /*T_CS file system for 20180775*/
 
 struct stat {
   short type;  // Type of file

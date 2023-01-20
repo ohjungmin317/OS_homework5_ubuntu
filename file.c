@@ -10,6 +10,8 @@
 #include "sleeplock.h"
 #include "file.h"
 
+#define BIT 255 /*T_CS file system for 20180775*/ 
+
 struct devsw devsw[NDEV];
 struct {
   struct spinlock lock;
@@ -144,6 +146,13 @@ filewrite(struct file *f, char *addr, int n)
       iunlock(f->ip);
       end_op();
 
+      /*T_CS file system for 20180775*/
+      if (r == -2) // error for allocate data block length overflow
+      {
+        cprintf("ERROR : Allocate overflow\n");
+        return -2;
+      }
+
       if(r < 0)
         break;
       if(r != n1)
@@ -155,3 +164,62 @@ filewrite(struct file *f, char *addr, int n)
   panic("filewrite");
 }
 
+/*T_CS file system for 20180775*/
+/* for use cs file information print */
+void cs_printinfo(struct file *n, char *fname)
+{
+  /* INODE dircet block = 4B = 3B(number) + 1B(length)*/
+  uint info_addr;
+  uint backward_area = BIT; // operation bit for 1B (length area)
+
+  cprintf("FILE NAME: %s\n", fname); // print file name file system info
+  cprintf("INODE NUM: %d\n", n->ip->inum); // print inode file system info
+
+  switch (n->ip->type) // print what type case 1 : dir | case 2 : file | case 3 : dev | case 4 : t_cs | default : no type 
+  {
+  case 1:
+    cprintf("FILE TYPE: DIR\n");
+    break;
+  case 2:
+    cprintf("FILE TYPE: FILE\n");
+    break;
+  case 3:
+    cprintf("FILE TYPE: DEV\n");
+    break;
+  case 4:
+    cprintf("FILE TYPE: CS\n");
+    break;
+  default:
+    cprintf("FILE TYPE: NO TYPE\n");
+    break;
+  }
+  cprintf("FILE SIZE: %d Bytes\n", n->ip->size); // print for file size for file system info 
+  cprintf("DIRECT BLOCK INFO: \n");
+
+  if (n->ip->type == 2) // when type -> FILE 
+  {
+    for (int i = 0; i < NDIRECT; i++)
+    {
+      // cprintf("%d",info_addr);
+      if ((info_addr = n->ip->addrs[i]) != 0)
+      {
+        cprintf("[%d] %d\n", i, info_addr); // for print direct block 
+      }
+    }
+  }
+  else if (n->ip->type == 4) // when type -> T_CS  
+  {
+    // cprintf("%d",info_addr);
+    for (int i = 0; i < NDIRECT; i++)
+    {
+      if ((info_addr = n->ip->addrs[i]) != 0)
+      {
+        uint num = info_addr >> 8; // number for move the bit 8 
+        uint length = info_addr & backward_area; // info_addr&(1<<8) - 1 = length  
+        cprintf("[%d] %d (num : %d, length: %d)\n", i, info_addr, num, length);
+      }
+    }
+  }
+  cprintf("\n");
+  cprintf("\n");
+}
